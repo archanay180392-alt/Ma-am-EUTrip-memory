@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trip Diary - Day Wise Memories</title>
+<style>
+    body {
+        font-family: 'Arial', sans-serif;
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(to bottom right, #ffecd2, #fcb69f);
+    }
+    header {
+        background-color: #ff6f61;
+        color: white;
+        text-align: center;
+        padding: 20px;
+        font-size: 2em;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+    .container {
+        max-width: 900px;
+        margin: auto;
+        padding: 20px;
+        background: rgba(255,255,255,0.95);
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    label {display: block; margin: 10px 0 5px;}
+    input, textarea {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+    }
+    input[type="file"] {
+        border: none;
+    }
+    button {
+        background-color: #ff6f61;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    button:hover {
+        background-color: #e65b50;
+    }
+    .memory {
+        border: 2px solid #ff6f61;
+        padding: 15px;
+        border-radius: 12px;
+        margin: 15px 0;
+        background: #fff4f2;
+    }
+    .memory h3 {
+        margin: 0;
+        color: #ff3b2e;
+    }
+    .memory p {
+        margin: 5px 0;
+    }
+    .memory img {
+        max-width: 100px;
+        max-height: 100px;
+        margin: 5px;
+        border-radius: 10px;
+        border: 1px solid #ff6f61;
+    }
+    .photo-container {
+        display: flex;
+        flex-wrap: wrap;
+    }
+    .edit-btn, .delete-btn {
+        background-color: #ffb347;
+        color: white;
+        padding: 5px 10px;
+        margin: 5px 5px 0 0;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+    }
+    .edit-btn:hover, .delete-btn:hover {
+        background-color: #ff9f2e;
+    }
+</style>
+</head>
+<body>
+<header>Trip Diary - Memories</header>
+<div class="container">
+    <label>Date:</label>
+    <input type="date" id="date">
+    
+    <label>Title:</label>
+    <input type="text" id="title" placeholder="Event Title">
+    
+    <label>Notes:</label>
+    <textarea id="notes" placeholder="Write your memories here..."></textarea>
+    
+    <label>Photos (select multiple):</label>
+    <input type="file" id="photos" multiple accept="image/*">
+    
+    <button onclick="saveMemory()">Save Event</button>
+    <button onclick="clearAll()">Clear All</button>
+    <button onclick="exportMemories()">Export JSON</button>
+    <button onclick="importMemories()">Import JSON</button>
+    
+    <hr>
+    <div id="memoriesList"></div>
+</div>
+
+<input type="file" id="importFile" style="display:none;" accept="application/json">
+
+<script>
+let memories = JSON.parse(localStorage.getItem('memories')||'[]');
+let editId = null;
+
+// Display memories
+function displayMemories(){
+    const container = document.getElementById('memoriesList');
+    container.innerHTML = '';
+    memories.sort((a,b)=> new Date(a.date)-new Date(b.date));
+    memories.forEach(mem=>{
+        const div = document.createElement('div');
+        div.className = 'memory';
+        div.innerHTML = `<h3>${mem.date} - ${mem.title}</h3>
+                         <p>${mem.notes}</p>
+                         <div class="photo-container">${mem.photos.map(p=>`<img src="${p}">`).join('')}</div>
+                         <button class="edit-btn" onclick="editMemory(${mem.id})">Edit</button>
+                         <button class="delete-btn" onclick="deleteMemory(${mem.id})">Delete</button>`;
+        container.appendChild(div);
+    });
+}
+displayMemories();
+
+// Save memory
+function saveMemory(){
+    const date = document.getElementById('date').value;
+    const title = document.getElementById('title').value;
+    const notes = document.getElementById('notes').value;
+    const files = document.getElementById('photos').files;
+    
+    if(!date || !title){ alert('Date and Title are required'); return;}
+    
+    let photos = [];
+    if(files.length>0){
+        let loaded = 0;
+        for(let i=0;i<files.length;i++){
+            const reader = new FileReader();
+            reader.onload = function(e){
+                photos.push(e.target.result);
+                loaded++;
+                if(loaded === files.length){
+                    saveToMemory(date,title,notes,photos);
+                }
+            }
+            reader.readAsDataURL(files[i]);
+        }
+    }else{
+        saveToMemory(date,title,notes,photos);
+    }
+}
+
+function saveToMemory(date,title,notes,photos){
+    if(editId){
+        const mem = memories.find(m=>m.id===editId);
+        mem.date=date; mem.title=title; mem.notes=notes; mem.photos=photos;
+        editId = null;
+    }else{
+        memories.push({id:Date.now(), date, title, notes, photos});
+    }
+    localStorage.setItem('memories',JSON.stringify(memories));
+    clearForm();
+    displayMemories();
+}
+
+function editMemory(id){
+    const mem = memories.find(m=>m.id===id);
+    document.getElementById('date').value = mem.date;
+    document.getElementById('title').value = mem.title;
+    document.getElementById('notes').value = mem.notes;
+    editId = id;
+}
+
+function deleteMemory(id){
+    if(confirm('Are you sure you want to delete this event?')){
+        memories = memories.filter(m=>m.id!==id);
+        localStorage.setItem('memories',JSON.stringify(memories));
+        displayMemories();
+    }
+}
+
+function clearForm(){
+    document.getElementById('date').value='';
+    document.getElementById('title').value='';
+    document.getElementById('notes').value='';
+    document.getElementById('photos').value='';
+}
+
+function clearAll(){
+    if(confirm('Clear all memories?')){
+        memories = [];
+        localStorage.setItem('memories',JSON.stringify(memories));
+        displayMemories();
+    }
+}
+
+function exportMemories(){
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(memories));
+    const dlAnchor = document.createElement('a');
+    dlAnchor.setAttribute("href", dataStr);
+    dlAnchor.setAttribute("download","trip-memories.json");
+    dlAnchor.click();
+}
+
+function importMemories(){
+    document.getElementById('importFile').click();
+}
+
+document.getElementById('importFile').addEventListener('change', function(){
+    const file = this.files[0];
+    if(file){
+        const reader = new FileReader();
+        reader.onload = function(e){
+            try{
+                const imported = JSON.parse(e.target.result);
+                memories = imported;
+                localStorage.setItem('memories',JSON.stringify(memories));
+                displayMemories();
+            }catch(err){
+                alert('Invalid JSON file');
+            }
+        }
+        reader.readAsText(file);
+    }
+});
+</script>
+</body>
+</html>
