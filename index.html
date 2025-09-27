@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trip — Day-wise Memories</title>
+  <meta name="description" content="Simple static one-page site to save day-wise memories of a trip (uses localStorage)." />
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa5b1;--accent:#6ee7b7;--glass:rgba(255,255,255,0.03)}
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{margin:0;background:linear-gradient(180deg,#071022 0%, #07182a 100%);color:#e6eef6;min-height:100vh;padding:28px}
+    .wrap{max-width:980px;margin:0 auto}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+    .controls{display:flex;gap:8px;align-items:center}
+    button, .btn{background:var(--glass);border:1px solid rgba(255,255,255,0.04);color:inherit;padding:8px 10px;border-radius:10px;cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 340px;gap:18px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type=text],textarea,input[type=date]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    textarea{min-height:120px;resize:vertical}
+    .days{display:flex;flex-direction:column;gap:12px}
+    .day{border-radius:10px;padding:10px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02)}
+    .day h3{margin:0;font-size:14px}
+    .entry{margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.03)}
+    .thumb{max-width:100%;height:auto;border-radius:8px;margin-top:8px;display:block}
+    .meta{display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12px;color:var(--muted)}
+    .small{font-size:12px;color:var(--muted)}
+    .search{padding:8px;border-radius:999px;border:1px solid rgba(255,255,255,0.04);background:transparent;width:240px}
+    footer{margin-top:18px;color:var(--muted);font-size:13px;text-align:center}
+    @media (max-width:880px){.grid{grid-template-columns:1fr;}.controls{flex-wrap:wrap}.search{width:100%}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Trip — Day-wise Memories</h1>
+        <p class="lead">A static single-file site that saves your trip notes locally (in your browser). Works offline.</p>
+      </div>
+      <div class="controls">
+        <input id="search" class="search" placeholder="Search text or date (YYYY-MM-DD)" />
+        <button id="exportBtn" class="btn">Export JSON</button>
+        <button id="importBtn" class="btn">Import JSON</button>
+        <button id="clearBtn" class="btn" title="Clear all data">Clear</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section>
+        <div class="card">
+          <h2 style="margin-top:0">Add / Edit Memory</h2>
+          <form id="entryForm">
+            <label for="date">Date</label>
+            <input type="date" id="date" required />
+
+            <label for="title">Title</label>
+            <input type="text" id="title" placeholder="E.g. Day 2 — Beach, sunset" />
+
+            <label for="notes">Notes</label>
+            <textarea id="notes" placeholder="Write what happened today..."></textarea>
+
+            <label for="photo">Attach photo (optional)</label>
+            <input type="file" id="photo" accept="image/*" />
+
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button type="submit" class="btn">Save</button>
+              <button type="button" id="cancelEdit" class="btn">Cancel</button>
+            </div>
+            <input type="hidden" id="editingId" />
+          </form>
+        </div>
+
+        <div style="height:18px"></div>
+
+        <div class="card">
+          <h2 style="margin-top:0">All days</h2>
+          <div id="days" class="days"></div>
+          <p id="emptyMsg" class="small" style="display:none">No memories yet. Add your first day above.</p>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card">
+          <h3 style="margin-top:0">Summary</h3>
+          <p class="small">Count of saved days: <strong id="count">0</strong></p>
+          <p class="small">Tip: This site stores everything in your browser's localStorage. To keep it safe, export a JSON backup.</p>
+          <hr style="opacity:.06;margin:12px 0" />
+          <div>
+            <button id="printBtn" class="btn">Print (or Save as PDF)</button>
+            <button id="downloadHtml" class="btn" title="Download a standalone HTML file">Download HTML</button>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Import / Export</h3>
+          <p class="small">Export all memories as JSON to transfer or backup.</p>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      Made with ❤️ — static, private (local only). No server required.
+    </footer>
+  </div>
+
+  <input type="file" id="importFile" accept="application/json" style="display:none" />
+
+  <script>
+    // Key name in localStorage
+    const STORAGE_KEY = 'tripMemories_v1';
+
+    // Utils
+    const $ = id => document.getElementById(id);
+
+    function loadData(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      }catch(e){console.error('load error',e);return []}
+    }
+    function saveData(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+    function uid(){ return 'id_'+Math.random().toString(36).slice(2,9); }
+
+    // Render
+    function render(filterText=''){
+      const daysEl = $('days'); daysEl.innerHTML = '';
+      const data = loadData();
+      if(data.length===0){$('emptyMsg').style.display='block';$('count').textContent=0;return}
+      $('emptyMsg').style.display='none';
+
+      // group by date
+      const grouped = {};
+      data.forEach(item => {
+        if(filterText){
+          const t = filterText.toLowerCase();
+          if(!(item.title?.toLowerCase().includes(t) || item.notes?.toLowerCase().includes(t) || item.date.includes(t))) return;
+        }
+        (grouped[item.date] = grouped[item.date]||[]).push(item);
+      });
+
+      // sort dates descending
+      const dates = Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+      if(dates.length===0){$('emptyMsg').style.display='block';$('count').textContent=0;return}
+      $('count').textContent = data.length;
+
+      for(const d of dates){
+        const dayWrap = document.createElement('div'); dayWrap.className='day';
+        const h = document.createElement('h3'); h.textContent = new Date(d).toDateString() + ' — ' + d;
+        dayWrap.appendChild(h);
+
+        grouped[d].forEach(entry => {
+          const e = document.createElement('div'); e.className='entry';
+          const title = document.createElement('strong'); title.textContent = entry.title || '(no title)';
+          const meta = document.createElement('div'); meta.className='meta'; meta.textContent = entry.time || '';
+
+          const notes = document.createElement('div'); notes.innerHTML = '<div style="margin-top:6px">'+(entry.notes?escapeHtml(entry.notes).replace(/\n/g,'<br>'):'')+'</div>';
+
+          e.appendChild(title); e.appendChild(meta); e.appendChild(notes);
+
+          if(entry.photo){
+            const img = document.createElement('img'); img.src = entry.photo; img.className='thumb'; e.appendChild(img);
+          }
+
+          const btns = document.createElement('div'); btns.style.marginTop='8px'; btns.style.display='flex'; btns.style.gap='8px';
+          const edit = document.createElement('button'); edit.className='btn'; edit.textContent='Edit';
+          edit.onclick = ()=> populateFormForEdit(entry.id);
+          const del = document.createElement('button'); del.className='btn'; del.textContent='Delete';
+          del.onclick = ()=>{ if(confirm('Delete this entry?')) deleteEntry(entry.id) };
+          btns.appendChild(edit); btns.appendChild(del);
+          e.appendChild(btns);
+
+          dayWrap.appendChild(e);
+        });
+
+        daysEl.appendChild(dayWrap);
+      }
+    }
+
+    function escapeHtml(str){ return (''+str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // Form handlers
+    $('entryForm').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      const date = $('date').value;
+      if(!date) return alert('Pick a date');
+      const title = $('title').value.trim();
+      const notes = $('notes').value.trim();
+      const editingId = $('editingId').value;
+
+      let photoData = null;
+      const fi = $('photo');
+      if(fi.files && fi.files[0]){
+        photoData = await fileToDataUrl(fi.files[0]);
+      }
+
+      const data = loadData();
+      if(editingId){
+        const idx = data.findIndex(x=>x.id===editingId);
+        if(idx>-1){
+          data[idx] = { ...data[idx], date, title, notes, photo: photoData||data[idx].photo, time: new Date().toLocaleString() };
+        }
+        $('editingId').value='';
+      } else {
+        data.push({ id: uid(), date, title, notes, photo: photoData, time: new Date().toLocaleString() });
+      }
+      saveData(data);
+      this.reset();
+      render($('search').value.trim());
+    });
+
+    $('cancelEdit').addEventListener('click', ()=>{ $('entryForm').reset(); $('editingId').value=''; });
+
+    function populateFormForEdit(id){
+      const data = loadData(); const item = data.find(x=>x.id===id); if(!item) return;
+      $('date').value = item.date; $('title').value = item.title||''; $('notes').value = item.notes||''; $('editingId').value = item.id; window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function deleteEntry(id){
+      const data = loadData(); const nd = data.filter(x=>x.id!==id); saveData(nd); render($('search').value.trim());
+    }
+
+    function fileToDataUrl(file){
+      return new Promise((res,rej)=>{
+        const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file);
+      })
+    }
+
+    // Export / Import
+    $('exportBtn').addEventListener('click', ()=>{
+      const data = loadData(); const blob = new Blob([JSON.stringify(data, null, 2)],{type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'trip-memories.json'; a.click();
+    });
+
+    $('importBtn').addEventListener('click', ()=>{ $('importFile').click(); });
+    $('importFile').addEventListener('change', function(){
+      const f = this.files[0]; if(!f) return; const r = new FileReader();
+      r.onload = ()=>{
+        try{
+          const parsed = JSON.parse(r.result);
+          if(!Array.isArray(parsed)) throw new Error('Invalid file');
+          saveData(parsed); render(); alert('Imported '+parsed.length+' records');
+        }catch(e){alert('Import failed: '+e.message)}
+      };
+      r.readAsText(f);
+      this.value='';
+    });
+
+    // Clear
+    $('clearBtn').addEventListener('click', ()=>{ if(confirm('Clear all saved memories? This cannot be undone.')){ localStorage.removeItem(STORAGE_KEY); render(); }});
+
+    // Search
+    $('search').addEventListener('input', ()=> render($('search').value.trim()));
+
+    // Print
+    $('printBtn').addEventListener('click', ()=> window.print());
+
+    // Download standalone HTML (current page) — create blob from current HTML
+    $('downloadHtml').addEventListener('click', ()=>{
+      const html = document.documentElement.outerHTML;
+      const blob = new Blob([html],{type:'text/html'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'trip-daywise-memory.html'; a.click();
+    });
+
+    // Init
+    render();
+  </script>
+</body>
+</html>
